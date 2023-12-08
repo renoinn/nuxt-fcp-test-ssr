@@ -1,0 +1,46 @@
+name: Build and Push ECR
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build and Push ECR
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # needed to interact with GitHub's OIDC Token endpoint.
+      contents: read
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Create env file
+      run: |
+        touch .env
+        echo OWM_API_KEY=${{ secrets.OWM_API_KEY }} >> .env
+
+    - name: Build NPM
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20.x'
+    - run: npm install
+    - run: npm run build --if-present
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@master
+      with:
+        role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE }}
+        aws-region: ap-northeast-1
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build and push docker image to ecr
+      env:
+        REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        REPOSITORY: "nuxt-fcp-test-ssr"
+        IMAGE_TAG: latest
+      run: |
+        docker build . --tag ${{ env.REGISTRY }}/${{ env.REPOSITORY }}:${{ env.IMAGE_TAG }}
+        docker push ${{ env.REGISTRY }}/${{ env.REPOSITORY }}:${{ env.IMAGE_TAG }}
